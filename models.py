@@ -1,18 +1,16 @@
 import numpy as np
 
 from keras.models import Sequential
-from keras.layers.core import Dense, Dropout, Activation
-from keras.layers.core import Lambda
-from keras.layers.recurrent import LSTM
-from keras.regularizers import l1, activity_l1
+from keras.layers.core import Dense, Dropout, Activation, Lambda
+from keras.layers.recurrent import GRU, LSTM
+from keras.regularizers import l1, activity_l1, l2, activity_l2
 
 import xgboost as xgb
 
-from sklearn.metrics import accuracy_score
+l1_reg = 0.0
+l2_reg = 0.3
 
-
-
-def GLM_poisson(Xr, Yr, Xt,return_model = False):
+def GLM_poisson(Xr, Yr, Xt,verbose=False,return_model=False):
 
     """
     Builds a generalized linear model and returns predictions for a test set
@@ -29,22 +27,117 @@ def GLM_poisson(Xr, Yr, Xt,return_model = False):
 
     """
 
+    try:
+        model
+        del model
+        print 'weird model present'
+    except NameError:
+        None
+
+
+    model = Sequential()
+    model.add(Dense(1, input_dim=np.shape(Xr)[1], init='uniform', activation='linear',W_regularizer=l2(l2_reg)))#W_regularizer=l1(l1_reg)))
+    model.add(Lambda(lambda x: np.exp(x)))
+    model.compile(loss='poisson', optimizer='adam')
+
+    model.fit(Xr, Yr, nb_epoch=3, verbose=verbose)
+
+    if return_model == True:
+        return model
+
+    Yr = model.predict(Xr)
+    Yt = model.predict(Xt)
+
+    del model # fucking a
+
+    return Yr, Yt
+
+def GLM_poisson2(Xr, Yr, Xt,verbose=False,return_model=False):
+
+    """
+    Builds a generalized linear model and returns predictions for a test set
+
+    Parameters:
+    ==========
+    Xr : features of train set
+    Yr : prediction variable of train set
+    Xt : features of test set
+
+    Returns:
+    ==========
+    Yt : predictions of test set
+
+    """
+
+    try:
+        model
+        del model
+        print 'weird model present'
+    except NameError:
+        None
+
+
     model = Sequential()
     model.add(Dense(1, input_dim=np.shape(Xr)[1], init='uniform', activation='linear'))
     model.add(Lambda(lambda x: np.exp(x)))
-    model.compile(loss='poisson', optimizer='rmsprop')
+    model.compile(loss='poisson', optimizer='adam')
 
-    model.fit(Xr, Yr, nb_epoch=3, batch_size=16, verbose=False)
+    model.fit(Xr, Yr, nb_epoch=3, verbose=verbose)
 
-    Yt = model.predict(Xt, verbose=False)
+    if return_model == True:
+        return model
 
-    if return_model:
-        return Yt, model
+    Yr = model.predict(Xr)
+    Yt = model.predict(Xt)
 
-    return Yt
+    del model # fucking a
+
+    return Yr, Yt
+
+def GLM_poisson3(Xr, Yr, Xt,verbose=False,return_model=False):
+
+    """
+    Builds a generalized linear model and returns predictions for a test set
+
+    Parameters:
+    ==========
+    Xr : features of train set
+    Yr : prediction variable of train set
+    Xt : features of test set
+
+    Returns:
+    ==========
+    Yt : predictions of test set
+
+    """
+
+    try:
+        model
+        del model
+        print 'weird model present'
+    except NameError:
+        None
 
 
-def NN_poisson(Xr, Yr, Xt, layers=1, return_model=False):
+    model = Sequential()
+    model.add(Dense(1, input_dim=np.shape(Xr)[1], init='uniform', activation='linear'))
+    model.add(Lambda(lambda x: np.exp(x)))
+    model.compile(loss='poisson', optimizer='adam')
+
+    model.fit(Xr, Yr, nb_epoch=3, verbose=verbose)
+
+    if return_model == True:
+        return model
+
+    Yr = model.predict(Xr)
+    Yt = model.predict(Xt)
+
+    del model # fucking a
+
+    return Yr, Yt
+
+
+def NN_poisson(Xr, Yr, Xt,verbose=False, return_model=False):
     """
     Builds a neural net and returns predictions for a test set
 
@@ -59,30 +152,40 @@ def NN_poisson(Xr, Yr, Xt, layers=1, return_model=False):
     Yt : predictions of test set
 
     """
+
+    try:
+        model
+        del model
+        print 'weird model present'
+    except NameError:
+        None
+
     if np.ndim(Xr)==1:
         Xr = np.transpose(np.atleast_2d(Xr))
 
     model = Sequential()
-    model.add(Dense(10, input_dim=np.shape(Xr)[1], W_regularizer=l1(0.01), init='uniform', activation='tanh'))
-    model.add(Dropout(0.6))
-    if layers == 2:
-        model.add(Dense(10, init='uniform', activation='tanh'))
-        model.add(Dropout(0.6))
-
+    model.add(Dense(10, input_dim=np.shape(Xr)[1], init='uniform', activation='tanh',W_regularizer=l1(l1_reg)))
+    model.add(Dropout(0.4))
     model.add(Dense(1, activation='linear'))
     model.add(Lambda(lambda x: np.exp(x)))
     model.compile(loss='poisson', optimizer='adam')
 
-    model.fit(Xr, Yr, nb_epoch=3, batch_size=32)
+    model.fit(Xr, Yr, nb_epoch=10,verbose=verbose)
 
-    result = model.predict(Xt)
-    if return_model:
-        return result, model
-    return result
+    if return_model == True:
+        return model
 
-def RNN_poisson(Xr,Yr,Xt, return_model=False):
+    Yr = model.predict(Xr)
+    Yt = model.predict(Xt)
+
+    del model # fucking a
+
+    return Yr, Yt
+
+
+def NN_poisson_2l(Xr, Yr, Xt, verbose=False, return_model=False):
     """
-    Builds a recurrent neural net and returns predictions for a test set
+    Builds a neural net and returns predictions for a test set
 
     Parameters:
     ==========
@@ -96,22 +199,80 @@ def RNN_poisson(Xr,Yr,Xt, return_model=False):
 
     """
 
-    assert np.ndim(Xr) >2, "Too few dimentions of train set (%r) is too small for this RNN. Make sure you set RNN_out to True in organize_data" % np.ndim(Xr)
+    try:
+        model
+        del model
+        print 'weird model present'
+    except NameError:
+        None
 
     model = Sequential()
-    model.add(LSTM(10, input_dim=196))
-    model.add(Dense(1, input_dim=10, init='uniform', activation='linear'))
+    model.add(Dense(25, input_dim=np.shape(Xr)[1], init='uniform', activation='tanh',W_regularizer=l2(l2_reg)))
+    model.add(Dropout(0.6))
+    model.add(Dense(5, activation='tanh',W_regularizer=l2(l2_reg)))
+    model.add(Dense(1, activation='linear'))
     model.add(Lambda(lambda x: np.exp(x)))
-    model.compile(loss='mean_squared_error', optimizer='adam')
-    model.fit(Xr, Yr, nb_epoch=10, batch_size=16, verbose=2)
-    result = model.predict(Xt)
+    model.compile(loss='poisson', optimizer='adam')
 
-    if return_model:
-        return result, model
+    model.fit(Xr, Yr, nb_epoch=10,verbose=verbose)
 
-    return result
+    if return_model == True:
+        return model
 
-def XGB_poisson(Xr, Yr, Xt, params=None):
+    Yr = model.predict(Xr)
+    Yt = model.predict(Xt)
+
+    del model # fucking a
+
+    return Yr, Yt
+
+
+def RNN_poisson(Xr,Yr,Xt,verbose=False, return_model=False):
+    """
+    Recurrent neural net that feeds into a GLM and returns predictions for a test set
+
+    Parameters:
+    ==========
+    Xr : features of train set
+    Yr : prediction variable of train set
+    Xt : features of test set
+
+    Returns:
+    ==========
+    Yt : predictions of test set
+
+    """
+
+    assert np.ndim(Xr) >2, "Train set  is too small (%r) for this RNN. Make sure you set RNN_out to True in organize_data" % np.ndim(Xr)
+
+    try:
+        model
+        del model
+        print 'weird model present'
+    except NameError:
+        None
+
+    nLSTM = 10
+    model = Sequential()
+    model.add(LSTM(nLSTM, input_dim=Xr.shape[2],input_length=Xr.shape[1],init='uniform',activation='tanh',W_regularizer=l2(l2_reg)))
+    model.add(Dense(1, input_dim=nLSTM, init='uniform', activation='linear'))
+    model.add(Lambda(lambda x: np.exp(x)))
+    model.compile(loss='poisson', optimizer='adam')
+    model.fit(Xr, Yr, nb_epoch=10, batch_size=16,verbose=verbose)
+
+    if return_model == True:
+        return model
+
+    Yr = model.predict(Xr)
+    Yt = model.predict(Xt)
+
+    del model # fucking a
+
+
+    return Yr, Yt
+
+
+def XGB_poisson(Xr, Yr, Xt,return_model=False,max_depth=2):
     """
     Trains a gradient boosted random forest and returns predictions for a test set
 
@@ -127,58 +288,43 @@ def XGB_poisson(Xr, Yr, Xt, params=None):
 
     """
 
-    if params == None:
+    try:
+        model
+        del model
+        print 'weird model present'
+    except NameError:
+        None
 
-        # pavanparams
-        # param = {'objective': "count:poisson",
-        # 'eval_metric': "logloss",
-        # 'num_parallel_tree': 2,
-        # 'eta': 0.07,
-        # 'gamma': 1, # default = 0
-        # 'max_depth': 1,
-        # 'subsample': 0.5,
-        # 'seed': 2925,
-        # 'silent': 1,
-        # 'missing': '-999.0'}
+    if np.ndim(Yr)<2:
+        Yr = np.expand_dims(Yr,1)
 
-        params = {'objective': "count:poisson",
-        'eval_metric': "logloss"}
+    params = {'objective': "count:poisson",
+    'eval_metric': "logloss", #optimizing for poisson loss
+    'eta': 0.3, #step size shrinkage. larger--> more conservative / less overfitting
+    #'alpha':l1_reg, #l1 regularization
+    'lambda':l2_reg, #l2 regularizaion
+    'gamma': 1, # default = 0, minimum loss reduction to further partitian on a leaf node. larger-->more conservative
+    'max_depth': max_depth,
+    'seed': 16,
+    'silent': 1,
+    'missing': '-999.0',
+    'colsample_bytree':.5 #new
+    }
 
     dtrain = xgb.DMatrix(Xr, label=Yr)
+
     dtest = xgb.DMatrix(Xt)
+    dtrain_y = xgb.DMatrix(Xr)
 
     num_round = 200
-    bst = xgb.train(params, dtrain, num_round)
+    model = xgb.train(params, dtrain, num_round)
 
-    Yt = bst.predict(dtest)
-    return np.expand_dims(Yt,1)
+    if return_model == True:
+        return model
 
+    Yr = model.predict(dtrain_y)
+    Yt = model.predict(dtest)
 
-def XGB_ensemble(ensemble_preds_full,ensemble_test_full):
-    """
-    Uses gradient boosting ensemble method to predict spiking from multiple models
-    """
-
-    # split predictions and test into cross validation sets
-    cross_validation_ind = ensemble_test_full.shape[0]/2
-
-    ensemble_train = ensemble_preds_full[:cross_validation_ind,:]
-    ensemble_test = ensemble_test_full[:cross_validation_ind]
-    ensemble_validate_train = ensemble_preds_full[cross_validation_ind:,:]
-    ensemble_validate_test = ensemble_test_full[cross_validation_ind:]
-
-    model = xgb.XGBClassifier()
-    model.fit(ensemble_train, ensemble_test)
-    ensemble_pred = model.predict(ensemble_validate_train)
-
-    accuracy = accuracy_score(ensemble_validate_test,ensemble_pred)
-
-    return ensemble_validate_test,ensemble_pred, accuracy
-
-
-
-
-
-
+    return np.expand_dims(Yr,1), np.expand_dims(Yt,1)
 
 

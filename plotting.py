@@ -161,7 +161,7 @@ def plot_from_results_dict(results_dict, certain_neurons=None, verbose=False,jus
 
 
 
-def plot_results_dict_by_spike_count(results_dict,spike_counts,just_test=True):
+def plot_results_dict_by_feature(results_dict, feature_array, feature_name=None, just_test=True,):
 
     fig = plt.figure(figsize=(10,5))
     ax1 = fig.add_subplot(121)
@@ -175,19 +175,21 @@ def plot_results_dict_by_spike_count(results_dict,spike_counts,just_test=True):
     for model in results_dict.keys():
         for k in results_dict[model].keys():
             if k == 'test' or (k == 'train' and just_test == False):
-                print model, k
-                plt.plot(spike_counts,results_dict[model][k],label=model)
-
+                print model + " " + k + " " + str(pearsonr(feature_array,results_dict[model][k]))
+                plt.plot(feature_array,results_dict[model][k],label=model)
 
     ax1.set_xticks(xrange(len(finite_inds)))
     ax1.set_xticklabels(labels,rotation=90)
-    ax1.set_xlabel("spike count")
+    ax1.set_xlabel(feature_name)
     ax1.set_ylabel("r2 value")
     ax1.spines['right'].set_visible(False)
     ax1.spines['top'].set_visible(False)
     ax1.xaxis.set_ticks_position('bottom')
     ax1.yaxis.set_ticks_position('left')
     ax1.legend(loc=2)
+
+
+
 
 
 

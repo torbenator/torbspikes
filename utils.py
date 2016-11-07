@@ -110,5 +110,25 @@ def bootstrap_stats(y, y_hat, n_runs=100,plot_fig=False):
 
     return real_val, bootstrap_hist, pct_score
 
-def calc_solo_chorist():
-    return
+def calc_solo_chorist(all_spikes,normalize_spiking=True):
+
+    neuron_diff_mat = np.zeros(all_spikes.shape)
+
+    if normalize_spiking == True:
+        new_spikes = np.zeros(all_spikes.shape)
+        for i in xrange(all_spikes.shape[0]):
+                new_spikes[i,:] = (all_spikes[i,:]-np.mean(all_spikes[i,:]))/np.std(all_spikes[i,:])
+    else:
+        new_spikes = all_spikes
+
+    for ti in xrange(new_spikes.shape[1]):
+        this_mean = np.mean(new_spikes[:,ti])
+        if not np.isfinite(this_mean):
+            this_mean =0
+
+        for neuron in xrange(new_spikes.shape[0]):
+            neuron_diff_mat[neuron,i] = new_spikes[neuron,ti]-this_mean
+    chorist_scores = np.sum(np.abs(neuron_diff_mat),1)
+
+    return chorist_scores
+

@@ -10,22 +10,24 @@ from models import *
 
 
 
-def run_funct(funct_string, X_train, X_test, y_train, y_test, include_train=True):
+def run_funct(funct_string, X_train, X_test, y_train, y_test):
     """
     Calculates the bootstrap statistics for data and a model
 
     """
 
-    Yr, Yt = globals()[funct_string](X_train,y_train,X_test)
-    #Yr, Yt = eval(funct_string)(X_train,y_train,X_test)
+    if funct_string == 'GLM_poisson' or funct_string == 'XGB_poisson':
+        Yr, Yt, weights = globals()[funct_string](X_train,y_train,X_test)
+    else:
+        Yr, Yt = globals()[funct_string](X_train,y_train,X_test)
 
     real_r_test, bootstrap_hist_test, pct_score_test = utils.bootstrap_stats(y_test, Yt)
+    real_r_train, bootstrap_hist_train, pct_score_train = utils.bootstrap_stats(y_train, Yr)
 
-    if include_train:
-        real_r_train, bootstrap_hist_train, pct_score_train = utils.bootstrap_stats(y_train, Yr)
+    if funct_string == 'GLM_poisson' or funct_string == 'XGB_poisson':
+        return real_r_train, bootstrap_hist_train, pct_score_train, real_r_test, bootstrap_hist_test, pct_score_test, Yr, Yt, weights
+    else:
         return real_r_train, bootstrap_hist_train, pct_score_train, real_r_test, bootstrap_hist_test, pct_score_test, Yr, Yt
-
-    return real_r_test, bootstrap_hist_test, pct_score_test, Yr, Yt
 
 
 def run_method(all_spikes, method, save_dir, fname,
@@ -70,9 +72,10 @@ def run_method(all_spikes, method, save_dir, fname,
 
     train_preds = []
     test_preds = []
+    all_weights = []
 
     if run_subsample is None:
-        runs = xrange(all_spikes.shape[1])
+        runs = xrange(all_spikes.shape[0])
     else:
         runs = run_subsample
 
@@ -81,13 +84,16 @@ def run_method(all_spikes, method, save_dir, fname,
     else:
         rnn_out = False
 
-    for my_neuron in runs:
-        print "Running neuron " + str(my_neuron)
+    for i, my_neuron in enumerate(runs):
+        print "Running neuron " + str(my_neuron) + ", run " + str(i)
         X_train,X_test,y_train,y_test = bookkeeping.organize_data(all_spikes=all_spikes,my_neuron=my_neuron,
             train_test_ratio=0.9, n_wins=n_wins,winsize=winsize,
             convolve_params=convolve_params,RNN_out=rnn_out,shrink_X=shrink_X,flatten_X=flatten_X)
-
-        real_r_train, bootstrap_hist_train, pct_score_train, real_r_test, bootstrap_hist_test, pct_score_test, train_pred, test_pred = run_funct(method, X_train, X_test, y_train, y_test)
+        print 'method ' + method
+        if method == 'GLM_poisson' or method == 'XGB_poisson':
+            real_r_train, bootstrap_hist_train, pct_score_train, real_r_test, bootstrap_hist_test, pct_score_test, train_pred, test_pred, weights = run_funct(method, X_train, X_test, y_train, y_test)
+        else:
+            real_r_train, bootstrap_hist_train, pct_score_train, real_r_test, bootstrap_hist_test, pct_score_test, train_pred, test_pred = run_funct(method, X_train, X_test, y_train, y_test)
 
         train.append(real_r_train)
         train_pct.append(pct_score_train)
@@ -97,6 +103,8 @@ def run_method(all_spikes, method, save_dir, fname,
         test_bootstrap.append(bootstrap_hist_test)
         train_preds.append(train_pred)
         test_preds.append(test_pred)
+        if method == 'GLM_poisson' or method == 'XGB_poisson':
+            all_weights.append(weights)
 
     np.save('train_r2',train)
     np.save('train_bootstrap',train_bootstrap)
@@ -106,6 +114,9 @@ def run_method(all_spikes, method, save_dir, fname,
     np.save('test_pct',test_pct)
     np.save('train_preds',train_preds)
     np.save('test_preds',test_preds)
+
+    if method == 'GLM_poisson' or method == 'XGB_poisson':
+        np.save('weights',all_weights)
 
     os.chdir(save_dir)
 
@@ -143,7 +154,7 @@ def run_all(all_spikes, save_dir, fname, mymodels,
     Runs all of the models on all of the data, evaluates, and saves them.
 
     """
-
+    print "OLD METHOD. OUT OF DATE"
     if os.path.exists(save_dir+fname):
         if safe:
             y = raw_input("Directory already exists. Data may be overwritten. Type y to continue.")
@@ -189,7 +200,7 @@ def run_all(all_spikes, save_dir, fname, mymodels,
         os.makedirs(mymodel)
         os.chdir('./' + mymodel)
 
-        if mymodel == 'RNN_poisson' or mymodel == 'XGB_poisson2d':
+        if mymodel == 'RNN_poisson' or mymodel == 'XGB_poisson':
             rnn_out = True
         else:
             rnn_out = False
@@ -234,10 +245,9 @@ def load_all(input_dir,mymodels,verbose=True):
         print "files in this directory " + str(files)
     for mymodel in mymodels:
         if mymodel in files:
-            try:
                 os.chdir('./'+mymodel)
+                sub_files = os.listdir('.')
                 results_dict[mymodel]=dict()
-
                 results_dict[mymodel]['train'] = np.load('train_r2.npy')
                 results_dict[mymodel]['train_bootstrap'] = np.load('train_bootstrap.npy')
                 results_dict[mymodel]['train_pct'] = np.load('train_pct.npy')
@@ -246,22 +256,23 @@ def load_all(input_dir,mymodels,verbose=True):
                 results_dict[mymodel]['test_pct'] = np.load('test_pct.npy')
                 results_dict[mymodel]['train_pred'] = np.load('train_preds.npy')
                 results_dict[mymodel]['test_pred'] = np.load('test_preds.npy')
-            except:
-                print mymodel + " hasn't been run"
-                continue
-            try:
-                params = OrderedDict()
-                with open('params.csv', 'rb') as csvfile:
-                    reader = csv.reader(csvfile)
-                    for row in reader:
-                        params[row[0]] = row[1]
+                if mymodel == 'GLM_poisson' or mymodel == 'XGB_poisson':
+                    if 'weights.npy' in sub_files:
+                        results_dict[mymodel]['weights'] = np.load('weights.npy')
+                try:
+                    params = OrderedDict()
+                    with open('params.csv', 'rb') as csvfile:
+                        reader = csv.reader(csvfile)
+                        for row in reader:
+                            params[row[0]] = row[1]
 
-                params_dict[mymodel] = params
-            except IOError:
-                print "No params file"
-                params_dict[mymodel] = OrderedDict()
+                    params_dict[mymodel] = params
+                except IOError:
+                    print "No params file"
+                    params_dict[mymodel] = OrderedDict()
+                    continue
 
-            os.chdir('..')
+                os.chdir('..')
 
     return results_dict,params_dict
 

@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import scipy.io
 
 from collections import OrderedDict,defaultdict
-
+from sklearn.decomposition import PCA
 
 """
 Functions to organize and manipulate spiking data
@@ -34,12 +34,13 @@ def _build_kernel(kernel_size,kernel_type="cos"):
         print kernel_type + " not built yet"
 
 
-def organize_data(all_spikes,my_neuron=193,subsample=None,
+def organize_data(all_spikes,my_neuron,subsample=None,
                   train_test_ratio=0.9,winsize=None, subsample_time=None,
                   n_wins=None, convolve_params=None,
                   RNN_out=False, flatten_X=False,
                   verbose=False, include_my_neuron=False,
-                  shrink_X=None, to_binary=False):
+                  shrink_X=None, to_binary=False,
+                  include_avg=True, include_pca_dims=2):
 
     """
 
@@ -69,20 +70,39 @@ def organize_data(all_spikes,my_neuron=193,subsample=None,
 
     """
     np.random.seed(16) #jeez
-
-
-    if convolve_params is None:
-        convolve_params = {"kernel_size":None,"X":False,"y":False}
+    orig_shape = all_spikes.shape
 
     # run on a subsample of the data or not
     #if subsample > 0 and subsample < all_spikes.shape[0]:
     #    these_neurons = np.random.choice(all_spikes.shape[0],subsample,replace=False)
     #else:
     #    these_neurons = range(all_spikes.shape[0])
+
     if subsample != None:
         these_neurons = subsample
     else:
         these_neurons = range(all_spikes.shape[0])
+
+    if convolve_params is None:
+        convolve_params = {"kernel_size":None,"X":False,"y":False}
+
+    if include_avg == True:
+        all_spikes = np.vstack((all_spikes,np.mean(all_spikes,0)))
+        these_neurons.append(all_spikes.shape[0]-1)
+        if verbose == True:
+            print 'added avg firing rate: ' + str(these_neurons[-1]) + ' to list of features'
+
+    if include_pca_dims is not None:
+            pca = PCA(n_components=2)
+            pca.fit(all_spikes[these_neurons,:])
+            all_spikes = np.vstack((all_spikes,pca.components_))
+            these_neurons.append(all_spikes.shape[0]-1)
+            if verbose == True:
+                print 'added PCA dim 1: ' + str(these_neurons[-1]) + ' to list of features'
+            these_neurons.append(all_spikes.shape[0]-2)
+            if verbose == True:
+                print 'added PCA dim 2: ' + str(these_neurons[-1]) + ' to list of features'
+
 
     # should we include the neuron we're trying to guess in the train set?
     these_neurons = [i for i in these_neurons if i != my_neuron or include_my_neuron==True]
@@ -116,7 +136,7 @@ def organize_data(all_spikes,my_neuron=193,subsample=None,
     # setting train and test inds
     # for training using only preceeding information
     if n_wins and winsize:
-        print "using only data "+ str(n_wins) +" windows preceeding spikes with window size of " + str(winsize)
+        print "using data "+ str(n_wins) +" windows preceeding spike bins with window size of " + str(winsize)
         total_window = n_wins * winsize
         split_ind = int((all_spikes.shape[1] - total_window) * train_test_ratio) + total_window
 
@@ -262,5 +282,11 @@ def sort_spikes(all_spikes, method):
         print method + " not built yet."
         return
 
-    return inds
+    sums = np.sum(all_spikes,1)
+    counts = [sums[i] for i in inds]
+
+    return inds, counts
+
+#def supplement_avg_spiking(X_train,X_test):
+
 

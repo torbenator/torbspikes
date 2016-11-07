@@ -8,6 +8,9 @@ import time
 if __name__ == "__main__":
 
     safe = True
+    n_wins=3
+    winsize=1
+    shrink_X = None
 
     load_dir = '/Users/Torben/Code/torbspikes/l2_3/'
     save_dir = '/Users/Torben/Code/torbspikes/l2_3/'
@@ -17,8 +20,9 @@ if __name__ == "__main__":
     all_spikes = bookkeeping.load_dat(indir="/Users/Torben/Documents/Kording/GLMDeep/M1_Stevenson_Binned.mat")
 
     convolve_params = {"kernel_size":[3,5,10,15],"kernel_type":["cos", "cos","cos","cos"],"X":True,"y":False}
-    runs = sorted_by_spike_count = bookkeeping.sort_spikes(all_spikes, method='sum')[100:]
+    runs,counts = sorted_by_spike_count = bookkeeping.sort_spikes(all_spikes, method='sum')
 
+    runs = runs[50:]
     ensemble_train_preds = []
     ensemble_test_preds = []
     for method in methods:
@@ -45,14 +49,12 @@ if __name__ == "__main__":
         this_neuron_test = all_model_test[:,i,:].T
 
         print "Running neuron " + str(my_neuron)
-        n_wins=3
-        winsize=1
-        shrink_X = None
+
         _,_,y_train,y_test = bookkeeping.organize_data(all_spikes=all_spikes,my_neuron=my_neuron,
             subsample=None,train_test_ratio=0.9, n_wins=n_wins,winsize=winsize,
             convolve_params=None,RNN_out=False,shrink_X=None)
 
-        real_r_train, bootstrap_hist_train, pct_score_train, real_r_test, bootstrap_hist_test, pct_score_test, Yr, Yt = big_jobs.run_funct('XGB_poisson', this_neuron_train, this_neuron_test, y_train, y_test)
+        real_r_train, bootstrap_hist_train, pct_score_train, real_r_test, bootstrap_hist_test, pct_score_test, Yr, Yt = big_jobs.run_funct('XGB_ensemble', this_neuron_train, this_neuron_test, y_train, y_test)
 
         train.append(real_r_train)
         train_pct.append(pct_score_train)

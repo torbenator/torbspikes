@@ -4,19 +4,22 @@ import bookkeeping, models, big_jobs, utils, plotting
 
 if __name__ == "__main__":
 
-    save_dir = '/Users/Torben/Code/torbspikes/1_ms_subsampled_10ms/'
+    save_dir = '/Users/Torben/Code/torbspikes/preceeding_50ms_to_10ms_flattened/'
 
     method='GLM_poisson'
-    note = "10ms_flattened_including_PCA_and_avg_now_w_self"
-    all_spikes = bookkeeping.load_dat(indir="/Users/Torben/Documents/Kording/GLMDeep/M1_Stevenson_binned_1ms.mat")
-    #kernel_params = {"kernel_size":[5,10,15],"kernel_type":["cos","cos","cos"],"X":True,"y":False}
-    all_spikes = all_spikes[:,:20000] #subsample to speed up 10X
+    note = "1 50 ms window predicting spiking 1 10ms bin after"
+    spikes_1ms = bookkeeping.load_dat(indir="/Users/Torben/Documents/Kording/GLMDeep/4Pascal.mat")
+    winsize=10
+    all_spikes = bookkeeping.resample_data(spikes_1ms[:,:670500],winsize)
 
-    sorted_by_spike_count,_ = bookkeeping.sort_spikes(all_spikes, method='sum')
+    #all_spikes = bookkeeping.load_dat(indir="/Users/Torben/Documents/Kording/GLMDeep/M1_Stevenson_Binned.mat")
+    # sorted_spikes = bookkeeping.sort_spikes(all_spikes,'sum')
+    # certain_neurons= sorted_spikes[0][100:120]
+
 
     big_jobs.run_method(all_spikes, method, save_dir, method,
-        run_subsample=sorted_by_spike_count[50:],
-        convolve_params=None, n_wins=10,
-        winsize=1, shrink_X=.5,flatten_X=True,
-        include_my_neuron=True, verbose=True,
+        run_subsample=None,
+        convolve_params=None, n_wins=5,
+        shrink_X=.9,window_mean=False,
+        include_my_neuron=True, verbose=False,
         safe=True, note=note)

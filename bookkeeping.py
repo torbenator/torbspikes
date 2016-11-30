@@ -33,13 +33,30 @@ def _build_kernel(kernel_size,kernel_type="cos"):
     else:
         print kernel_type + " not built yet"
 
+def resample_data(all_spikes,winsize):
+    """
+    Resamples data into winsize ms bins assuming srate is winsize/1ms.
+
+    """
+    n_neurons = all_spikes.shape[0]
+    n_wins = int(np.floor(all_spikes.shape[1]/winsize))
+    resampled_data = np.zeros((n_neurons,n_wins))
+
+    for n in xrange(n_neurons):
+        for sw in xrange(n_wins):
+            this_win = sw * winsize
+            next_win = (sw+1) * winsize
+            resampled_data[n,sw] = np.sum(all_spikes[n,this_win:next_win])
+
+    return resampled_data
+
 
 def organize_data(all_spikes,my_neuron,subsample=None,
-                  train_test_ratio=0.9,winsize=None, subsample_time=None,
+                  train_test_ratio=0.9, subsample_time=None,
                   n_wins=None, convolve_params=None,
-                  RNN_out=False, flatten_X=False,
+                  RNN_out=False, window_mean=False,
                   verbose=False, include_my_neuron=False,
-                  shrink_X=None, to_binary=False,
+                  shrink_X=None, to_binary=False, boxcar_simp=None,
                   include_avg=True, include_pca_dims=2):
 
     """
@@ -57,8 +74,7 @@ def organize_data(all_spikes,my_neuron,subsample=None,
     convolve_params : dictionary of kernel sizes and types to convolve with data
     as well as whether to convolve them with features or predictor(optional)
     EXAMPLE: kernel_params = {"kernel_size":[5,10,15],"kernel_type":["cos","cos","cos"],"X":True,"y":False}
-    winsize : window_size to use if using only information preceeding spikes
-    RNN_out : (boolean, requires winsize) True if you want X to be (Features x Examples),
+    RNN_out : Boolean. True if you want X to be (Features x Examples),
     False if you want X to be (Features x Example_d1 x Example_d2) --> needed for RNN so that each example
     can have a feature and time component
     shrink_X : multiplies the spike series by the integer you input to normalize spikes - helps with NN algorithms
@@ -69,14 +85,12 @@ def organize_data(all_spikes,my_neuron,subsample=None,
     X_train,X_test,y_train,y_test
 
     """
+
+    if RNN_out == True:
+        window_mean = False
+
     np.random.seed(16) #jeez
     orig_shape = all_spikes.shape
-
-    # run on a subsample of the data or not
-    #if subsample > 0 and subsample < all_spikes.shape[0]:
-    #    these_neurons = np.random.choice(all_spikes.shape[0],subsample,replace=False)
-    #else:
-    #    these_neurons = range(all_spikes.shape[0])
 
     if subsample != None:
         these_neurons = subsample
@@ -135,74 +149,80 @@ def organize_data(all_spikes,my_neuron,subsample=None,
 
     # setting train and test inds
     # for training using only preceeding information
-    if n_wins and winsize:
-        print "using data "+ str(n_wins) +" windows preceeding spike bins with window size of " + str(winsize)
-        total_window = n_wins * winsize
-        split_ind = int((all_spikes.shape[1] - total_window) * train_test_ratio) + total_window
+    if n_wins:
 
-        X_train = np.zeros((split_ind, total_window, len(these_neurons)))
+        print "using data "+ str(n_wins) +" windows preceeding spike bins."
+        split_ind = int((all_spikes.shape[1] - n_wins) * train_test_ratio) + n_wins
+
+        X_train = np.zeros((split_ind, n_wins, len(these_neurons)))
         X_train[:] = np.nan
-        X_test= np.zeros((all_spikes.shape[1] - split_ind - total_window, total_window, len(these_neurons)))
+        X_test= np.zeros((all_spikes.shape[1] - split_ind - n_wins, n_wins, len(these_neurons)))
         X_test[:] = np.nan
 
         if convolve_params["X"] == True:
             for n in xrange(X_train.shape[2]):
                 for i in xrange(split_ind):
-                    X_train[i,:,n] = processed_dat[n, i:i + total_window]
+                    X_train[i,:,n] = processed_dat[n, i:i + n_wins]
 
             for n in xrange(X_train.shape[2]):
-                for i in xrange(split_ind, all_spikes.shape[1] - total_window):
-                    X_test[i-split_ind,:,n] = processed_dat[n, i:i + total_window]
+                for i in xrange(split_ind, all_spikes.shape[1] - n_wins):
+                    X_test[i-split_ind,:,n] = processed_dat[n, i:i + n_wins]
 
         elif convolve_params["X"] == False:
             for n in xrange(X_train.shape[2]):
                 for i in xrange(split_ind):
-                    X_train[i,:,n] = all_spikes[n, i:i + total_window]
+                    X_train[i,:,n] = all_spikes[n, i:i + n_wins]
             for n in xrange(X_train.shape[2]):
-                for i in xrange(split_ind, all_spikes.shape[1] - total_window):
-                    X_test[i-split_ind,:,n] = all_spikes[n, i:i + total_window]
+                for i in xrange(split_ind, all_spikes.shape[1] - n_wins):
+                    X_test[i-split_ind,:,n] = all_spikes[n, i:i + n_wins]
 
         if convolve_params["y"] == True:
-            y_train = processed_dat[new_y_inds,total_window:split_ind+total_window]
-            y_test = processed_dat[new_y_inds,split_ind+total_window:processed_dat.shape[1]]
+            y_train = processed_dat[new_y_inds,n_wins:split_ind+n_wins]
+            y_test = processed_dat[new_y_inds,split_ind+n_wins:processed_dat.shape[1]]
 
         elif convolve_params["y"] == False:
-            y_train = all_spikes[my_neuron,total_window:split_ind+total_window]
-            y_test = all_spikes[my_neuron,split_ind+total_window:all_spikes.shape[1]]
+            y_train = all_spikes[my_neuron,n_wins:split_ind+n_wins]
+            y_test = all_spikes[my_neuron,split_ind+n_wins:all_spikes.shape[1]]
 
-        if winsize !=1 :
-            print 'this thing'
-            windows = filter(lambda x: x < total_window-winsize+1,range(0,total_window,winsize))
-            print windows
 
-            new_X_train = np.zeros((X_train.shape[0],len(windows),X_train.shape[2]))
-            new_X_train[:] = np.nan
-            for nc, n in enumerate(these_neurons):
-                for i in xrange(split_ind):
-                    for wi, w in enumerate(windows):
-                        new_X_train[i,wi,nc] = np.mean(X_train[i, w : w + winsize, nc])
-
-            new_X_test = np.zeros((X_test.shape[0],len(windows),X_test.shape[2]))
-            new_X_test[:] = np.nan
-            for nc,n in enumerate(these_neurons):
-                for i in xrange(split_ind, all_spikes.shape[1] - total_window):
-                    for wi, w in enumerate(windows):
-                        new_X_test[i-split_ind, wi, nc] = np.mean(X_test[i-split_ind, w : w + winsize, nc])
-
-            X_train = new_X_train
-            X_test = new_X_test
-
-        if RNN_out == False and flatten_X == False:
+        if RNN_out == False and window_mean == True:
             X_train = np.mean(X_train,1)
             X_test = np.mean(X_test,1)
 
-        if flatten_X == True:
+        if RNN_out == False and window_mean == False:
             X_train = np.reshape(X_train,[X_train.shape[0],X_train.shape[1]*X_train.shape[2]])
             X_test = np.reshape(X_test,[X_test.shape[0],X_test.shape[1]*X_test.shape[2]])
             print "X flattened. X shape = " + str(X_train.shape)
 
-
     # for training using any information
+
+    elif boxcar_simp is not None:
+
+        split_ind = int((all_spikes.shape[1] - np.max(boxcar_simp)) * train_test_ratio) + np.max(boxcar_simp)
+
+        X_train = np.zeros((split_ind - np.max(boxcar_simp), len(boxcar_simp), len(these_neurons)))
+        X_train[:] = np.nan
+        X_test= np.zeros((all_spikes.shape[1] - split_ind-1, len(boxcar_simp), len(these_neurons)))
+        X_test[:] = np.nan
+
+        for bi,b in enumerate(boxcar_simp):
+            for n in xrange(X_train.shape[2]):
+                for i in xrange(np.max(boxcar_simp), split_ind):
+                    X_train[i-np.max(boxcar_simp),bi,n] = np.sum(all_spikes[n,i-b:i])
+
+        y_train = all_spikes[my_neuron, xrange(np.max(boxcar_simp), split_ind)]
+
+        for bi,b in enumerate(boxcar_simp):
+            for n in xrange(X_test.shape[2]):
+                for i in xrange(split_ind, all_spikes.shape[1]-1):
+                    X_test[i-split_ind,bi,n] = np.sum(all_spikes[n,i-b:i])
+        y_test = all_spikes[my_neuron, xrange(split_ind, all_spikes.shape[1]-1)]
+
+        if window_mean == True:
+            X_train = np.reshape(X_train,[X_train.shape[0],X_train.shape[1]*X_train.shape[2]])
+            X_test = np.reshape(X_test,[X_test.shape[0],X_test.shape[1]*X_test.shape[2]])
+            print "X flattened. X shape = " + str(X_train.shape)
+
     else:
         train_inds = np.random.choice(all_spikes.shape[1],int(all_spikes.shape[1]*train_test_ratio),replace=False)
         test_inds = [i for i in range(all_spikes.shape[1]) if i not in train_inds]

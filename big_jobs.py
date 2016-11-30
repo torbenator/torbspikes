@@ -32,8 +32,7 @@ def run_funct(funct_string, X_train, X_test, y_train, y_test):
 
 def run_method(all_spikes, method, save_dir, fname,
     run_subsample=None,
-    convolve_params=None, n_wins=10,
-    winsize=1, shrink_X=None, flatten_X=False,
+    convolve_params=None, n_wins=None, shrink_X=None, window_mean=False,
     include_my_neuron=False, verbose=False,
     safe=True, note=None):
 
@@ -58,7 +57,6 @@ def run_method(all_spikes, method, save_dir, fname,
         writer.writerow(['neuron subsample: ', str(run_subsample)])
         writer.writerow(['convolve params: ', str(convolve_params)])
         writer.writerow(['n_wins: ', str(n_wins)])
-        writer.writerow(['winsize: ', str(winsize)])
         writer.writerow(['shrink_X: ', str(shrink_X)])
         writer.writerow(['note',str(note)])
 
@@ -87,8 +85,8 @@ def run_method(all_spikes, method, save_dir, fname,
     for i, my_neuron in enumerate(runs):
         print "Running neuron " + str(my_neuron) + ", run " + str(i)
         X_train,X_test,y_train,y_test = bookkeeping.organize_data(all_spikes=all_spikes,my_neuron=my_neuron,
-            train_test_ratio=0.9, n_wins=n_wins,winsize=winsize,
-            convolve_params=convolve_params,RNN_out=rnn_out,shrink_X=shrink_X,flatten_X=flatten_X)
+            train_test_ratio=0.9, n_wins=n_wins,
+            convolve_params=convolve_params,RNN_out=rnn_out,shrink_X=shrink_X,window_mean=window_mean)
         print 'method ' + method
         if method == 'GLM_poisson' or method == 'XGB_poisson':
             real_r_train, bootstrap_hist_train, pct_score_train, real_r_test, bootstrap_hist_test, pct_score_test, train_pred, test_pred, weights = run_funct(method, X_train, X_test, y_train, y_test)
@@ -146,7 +144,7 @@ def load_one(input_dir='.'):
 def run_all(all_spikes, save_dir, fname, mymodels,
     run_subsample=None,
     convolve_params=None, n_wins=10,
-    winsize=1, shrink_X=None,
+    shrink_X=None,
     include_my_neuron=False, verbose=False,
     safe=True, note=None):
 
@@ -172,7 +170,6 @@ def run_all(all_spikes, save_dir, fname, mymodels,
         writer.writerow(['neuron subsample: ', str(run_subsample)])
         writer.writerow(['convolve params: ', str(convolve_params)])
         writer.writerow(['n_wins: ', str(n_wins)])
-        writer.writerow(['winsize: ', str(winsize)])
         writer.writerow(['shrink_X: ', str(shrink_X)])
         writer.writerow(['note',str(note)])
 
@@ -210,7 +207,7 @@ def run_all(all_spikes, save_dir, fname, mymodels,
             print "Running neuron " + str(my_neuron) + " run number " + str(i)
 
             X_train,X_test,y_train,y_test = bookkeeping.organize_data(all_spikes=all_spikes,my_neuron=my_neuron,
-                subsample=None,train_test_ratio=0.9, n_wins=n_wins,winsize=winsize, flatten_X=flatten_X,
+                subsample=None,train_test_ratio=0.9, n_wins=n_wins, window_mean=window_mean,
                 convolve_params=convolve_params,RNN_out=rnn_out,shrink_X=shrink_X)
 
 
@@ -239,29 +236,32 @@ def load_all(input_dir,mymodels,verbose=True):
     results_dict = OrderedDict()
     params_dict = OrderedDict()
 
-    os.chdir(input_dir)
-    files = os.listdir('.')
+    files = os.listdir(input_dir)
     if verbose == True:
         print "files in this directory " + str(files)
     for mymodel in mymodels:
         if mymodel in files:
-                os.chdir('./'+mymodel)
-                sub_files = os.listdir('.')
+            print mymodel
+            sub_files = os.listdir(input_dir+mymodel)
+            if len(sub_files) > 1:
+                if verbose == True:
+                    print "files in this directory: " + str(sub_files)
                 results_dict[mymodel]=dict()
-                results_dict[mymodel]['train'] = np.load('train_r2.npy')
-                results_dict[mymodel]['train_bootstrap'] = np.load('train_bootstrap.npy')
-                results_dict[mymodel]['train_pct'] = np.load('train_pct.npy')
-                results_dict[mymodel]['test'] = np.load('test_r2.npy')
-                results_dict[mymodel]['test_bootstrap'] = np.load('test_bootstrap.npy')
-                results_dict[mymodel]['test_pct'] = np.load('test_pct.npy')
-                results_dict[mymodel]['train_pred'] = np.load('train_preds.npy')
-                results_dict[mymodel]['test_pred'] = np.load('test_preds.npy')
+                results_dict[mymodel]['train'] = np.load(input_dir+'/'+mymodel+'/train_r2.npy')
+                results_dict[mymodel]['train_bootstrap'] = np.load(input_dir+'/'+mymodel+'/train_bootstrap.npy')
+                results_dict[mymodel]['train_pct'] = np.load(input_dir+'/'+mymodel+'/train_pct.npy')
+                results_dict[mymodel]['test'] = np.load(input_dir+'/'+mymodel+'/test_r2.npy')
+                results_dict[mymodel]['test_bootstrap'] = np.load(input_dir+'/'+mymodel+'/test_bootstrap.npy')
+                results_dict[mymodel]['test_pct'] = np.load(input_dir+'/'+mymodel+'/test_pct.npy')
+                results_dict[mymodel]['train_pred'] = np.load(input_dir+'/'+mymodel+'/train_preds.npy')
+                results_dict[mymodel]['test_pred'] = np.load(input_dir+'/'+mymodel+'/test_preds.npy')
+
                 if mymodel == 'GLM_poisson' or mymodel == 'XGB_poisson':
                     if 'weights.npy' in sub_files:
-                        results_dict[mymodel]['weights'] = np.load('weights.npy')
+                        results_dict[mymodel]['weights'] = np.load(input_dir+'/'+mymodel+'/weights.npy')
                 try:
                     params = OrderedDict()
-                    with open('params.csv', 'rb') as csvfile:
+                    with open(input_dir+'/'+mymodel+'/params.csv', 'rb') as csvfile:
                         reader = csv.reader(csvfile)
                         for row in reader:
                             params[row[0]] = row[1]
@@ -272,7 +272,7 @@ def load_all(input_dir,mymodels,verbose=True):
                     params_dict[mymodel] = OrderedDict()
                     continue
 
-                os.chdir('..')
+            os.chdir('..')
 
     return results_dict,params_dict
 

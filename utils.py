@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.stats import pearsonr
 
 def poisson_pseudoR2(y, y_hat, y_null=None, verbose=False):
     """
@@ -51,15 +52,6 @@ def poisson_pseudoR2(y, y_hat, y_null=None, verbose=False):
 
     return R2
 
-def reduce_shrinkage(y_test,y_hat,weight_coeff=1):
-
-    # TODO this totally doesn't work.
-
-    m,y = np.polyfit(np.squeeze(y_hat),y_test,1)
-
-    adjusted_y_hat = y_hat*m + y
-    return adjusted_y_hat
-
 
 def bootstrap_stats(y, y_hat, n_runs=100,plot_fig=False):
     """
@@ -110,25 +102,64 @@ def bootstrap_stats(y, y_hat, n_runs=100,plot_fig=False):
 
     return real_val, bootstrap_hist, pct_score
 
-def calc_solo_chorist(all_spikes,normalize_spiking=True):
+def calc_chorus_scores(all_spikes):
+    """
+    Calculates the chorus score from that one paper et al. which is the correlation between
+    the spiking of one neuron with the sum of spiking of the other neurons.
+    i.e. if this neuron fires when other neurons fire, it will have a high chorus score.
 
-    neuron_diff_mat = np.zeros(all_spikes.shape)
+    """
+    chorus_scores = np.zeros(all_spikes.shape[0])
 
-    if normalize_spiking == True:
-        new_spikes = np.zeros(all_spikes.shape)
-        for i in xrange(all_spikes.shape[0]):
-                new_spikes[i,:] = (all_spikes[i,:]-np.mean(all_spikes[i,:]))/np.std(all_spikes[i,:])
-    else:
-        new_spikes = all_spikes
+    for neuron in xrange(all_spikes.shape[0]):
+        inds = [i for i in xrange(all_spikes.shape[0]) if i != neuron]
+        sos = np.sum(all_spikes[inds,:],0)
+        r = pearsonr(all_spikes[neuron,:],sos)[0]
+        if np.isfinite(r):
+            chorus_scores[neuron] = r
 
-    for ti in xrange(new_spikes.shape[1]):
-        this_mean = np.mean(new_spikes[:,ti])
-        if not np.isfinite(this_mean):
-            this_mean =0
+    return chorus_scores
 
-        for neuron in xrange(new_spikes.shape[0]):
-            neuron_diff_mat[neuron,i] = new_spikes[neuron,ti]-this_mean
-    chorist_scores = np.sum(np.abs(neuron_diff_mat),1)
+def simulate_data(n_neurons,n_samples,data_type='simultaneous',pct_noise=0,max_spikes=8,n_seq=10):
+    """
+    Simulates a dataset of spike counts organized as neuron x samples.
+    Can be used to sanity check models and demonstrate their limitations.
 
-    return chorist_scores
+
+    """
+    # bias spiking to be low
+    p_range = range(1,max_spikes+1)
+    bias_pct = [i/float(sum(p_range)) for i in reversed(p_range)]
+
+    output_mat = np.zeros((n_neurons,n_samples))
+    if data_type == 'simultaneous':
+
+        my_vals = np.random.choice(range(max_spikes),n_samples,p=bias_pct)
+
+        for n in xrange(n_neurons):
+            if pct_noise>0:
+                these_vals = my_vals + ((np.random.sample(n_samples)-.5) * pct_noise)
+                if any(these_vals<0):
+                    these_vals= these_vals-min(these_vals)
+                norm = max_spikes/max(these_vals)
+                output_mat[n,:] = these_vals*norm
+            else:
+                output_mat[n,:] = my_vals
+
+    if data_type == 'sequence':
+        predictor_seq = np.zeros(n_seq)
+        predictor_seq[n_seq-1] = 1
+        repeated_predictor = np.repeat([predictor_seq], int(n_samples/n_seq), axis=0)
+        output_mat[0,:] = np.reshape(repeated_predictor, [repeated_predictor.shape[0]*repeated_predictor.shape[1]])
+        sequence = np.repeat([range(n_seq)], int(n_samples/n_seq), axis=0)
+        my_vals = np.reshape(sequence, [sequence.shape[0]*sequence.shape[1]])
+        for n in xrange(1, n_neurons):
+            if pct_noise>0:
+                these_vals = my_vals + (np.random.sample(n_samples) * pct_noise)
+                norm = max_spikes/max(these_vals)
+                output_mat[n,:] = these_vals*norm
+            else:
+                output_mat[n,:] = my_vals
+
+    return output_mat
 

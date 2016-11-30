@@ -14,13 +14,14 @@ def train_glm_xgb_models(X_train,y_train,X_test):
 
 def get_weights(glm_model,xgb_model,plot=True,importance_type='weight'):
 
+    n_neurons = glm_model.get_input_shape_at(0)
     glm_weights = glm_model.get_weights()[0]
     score_dict = xgb_model.get_score(importance_type=importance_type)
-    cleaned_scores = np.zeros(196)
-    for i in xrange(196):
+
+    cleaned_scores = np.zeros(n_neurons)
+    for i in xrange(n_neurons):
         if 'f'+str(i) in score_dict.keys():
             cleaned_scores[i] = score_dict['f'+str(i)]
-
 
     if plot==True:
         fig = plt.figure(figsize=(5,5))
@@ -33,4 +34,5 @@ def get_weights(glm_model,xgb_model,plot=True,importance_type='weight'):
         ax1.spines['top'].set_visible(False)
         ax1.xaxis.set_ticks_position('bottom')
         ax1.yaxis.set_ticks_position('left')
+
     return glm_weights, cleaned_scores
